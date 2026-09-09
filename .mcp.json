@@ -1,0 +1,1 @@
+{"mcpServers": {"github": {"url": "https://api.githubcopilot.com/mcp/", "transport": "http", "headers": {"Authorization": "Bearer ${env:GITHUB_MCP_PAT}"}}}}

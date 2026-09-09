@@ -1,0 +1,24 @@
+{
+  "UserPromptSubmit": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "echo '{\"hookSpecificOutput\": {\"hookEventName\": \"UserPromptSubmit\", \"additionalContext\": \"GitHub Projects Workflow: Before starting work, ensure you have a GitHub Issue for this task. Use /github-projects-workflow to create or identify one. Do not start implementation without a linked Issue.\"}}'"
+        }
+      ]
+    }
+  ],
+  "Stop": [
+    {
+      "matcher": "",
+      "hooks": [
+        {
+          "type": "prompt",
+          "prompt": "Before stopping, verify ALL three conditions:\n1. Did you create or identify a GitHub Issue for this session's work?\n2. Did you document your progress as a comment on that Issue with a link to any .md results file?\n3. If the task is complete, did you pass it to the skeptic subagent for review?\nIf ANY answer is NO, complete that step NOW before stopping. Do not stop until all three are YES or the task is trivial (1-3 sentence answer)."
+        }
+      ]
+    }
+  ]
+}
