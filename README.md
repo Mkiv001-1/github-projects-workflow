@@ -1,81 +1,74 @@
 # github-projects-workflow
 
-Devin CLI plugin that forces every session to track work via GitHub Projects.
+Devin / Cursor plugin: единый GitHub Projects lifecycle для всех репозиториев под `D:\Git`.
 
 ## What It Does
 
-- **Mandatory task tracking**: every session creates or identifies a GitHub Issue before starting implementation.
-- **Progress documentation**: work is documented as Issue comments with links to `.md` results files.
-- **Skeptic review**: completed work is passed to an adversarial reviewer subagent before marking Done.
-- **Hard enforcement**: lifecycle hooks block session end if progress is not documented.
+- Mandatory Issue + board tracking before implementation
+- Board Status as WIP signal (Backlog/Todo → Ready → In Progress → Blocked|In review → Done)
+- Progress docs with **absolute** URLs after push+verify
+- Body checklist = status; comments = history
+- Skeptic review when project policy requires it
+- **`gh` CLI is PRIMARY** (MCP optional)
 
 ## Lifecycle
 
 ```
-1. CREATE/IDENTIFY → 2. WORK → 3. DOCUMENT → 4. SKEPTIC REVIEW → 5. VERDICT
-     ↑                                                        ↓
-     └──── NEEDS REWORK / FAIL → fix and re-submit ───────────┘
+1. CREATE/IDENTIFY → 2. WORK → 3. DOCUMENT → 4. REVIEW → 5. VERDICT
+     ↑                                              ↓
+     └──── NEEDS REWORK / FAIL → fix ───────────────┘
 ```
 
-## Installation
+## Installation (Devin)
 
 ```bash
 devin plugins install Mkiv001-1/github-projects-workflow
 ```
 
+## For every D:\Git project
+
+1. Keep this repo as **canon** (`D:\Git\github-projects-workflow`).
+2. In each project, add a **thin** local skill with repo/project IDs only:
+   - `.devin/skills/github-projects-workflow/` (or `github-project/`)
+   - `references/ids.md` — PROJECT_NUM, PROJECT_ID, Status/Priority/Size option IDs
+3. Copy or symlink rule: `.devin/rules/task-tracking.md` → point at this lifecycle.
+4. Reference from project `AGENTS.md` (do not fork the full lifecycle text).
+
+See `templates/project-local/` for a starter.
+
 ## Prerequisites
 
-### GitHub MCP Server
-
-The plugin uses the official GitHub MCP server (remote HTTPS). Set the `GITHUB_MCP_PAT` environment variable to a GitHub Personal Access Token with scopes:
-- `repo` (issues, PRs)
-- `project` (Projects V2)
-
 ```powershell
-# Windows (PowerShell)
-[System.Environment]::SetEnvironmentVariable("GITHUB_MCP_PAT", "ghp_your_token_here", "User")
-```
-
-Alternatively, use `devin mcp login github` for OAuth (requires pre-registered OAuth client).
-
-### Fallback: gh CLI
-
-If the MCP server is unavailable, the plugin falls back to `gh` CLI via `exec`. Ensure `gh` is installed and authenticated:
-```bash
 gh auth login
+gh auth refresh -s project,read:project
 ```
+
+MCP github optional; do not depend on it.
+
+## Status semantics
+
+| Status | Meaning |
+|--------|---------|
+| Backlog / Todo | On board, not ready or not started |
+| Ready | Spec clear — can start |
+| In Progress | Actively working |
+| Blocked | Waiting on operator / external gate |
+| In review / Review | Review or skeptic |
+| Done | Finished + usually issue closed |
+
+**Ready ≠ Done.**
 
 ## Components
 
-| Component | File | Purpose |
-|-----------|------|---------|
-| Manifest | `.devin-plugin/plugin.json` | Plugin identity |
-| MCP config | `.mcp.json` | GitHub MCP server (remote) |
-| Always-on rule | `AGENTS.md` | Enforced in every session |
-| Hooks | `hooks.json` | Stop + UserPromptSubmit enforcement |
-| Main skill | `skills/github-projects-workflow/` | Lifecycle guide |
-| Create task | `skills/create-task/` | Create GitHub Issue |
-| Document | `skills/document-progress/` | Comment with .md link |
-| Skeptic pass | `skills/pass-to-skeptic/` | Launch skeptic subagent |
-| Skeptic agent | `agents/skeptic.md` | Adversarial reviewer profile |
-| Triggered rule | `rules/task-tracking.md` | Reminder on task start |
+| Component | Path |
+|-----------|------|
+| Canon skill | `skills/github-projects-workflow/SKILL.md` |
+| Create task | `skills/create-task/` |
+| Document | `skills/document-progress/` |
+| Skeptic pass | `skills/pass-to-skeptic/` |
+| Rule | `rules/task-tracking.md` |
+| Project starter | `templates/project-local/` |
 
-## Skills
+## Version
 
-- `/github-projects-workflow` — main lifecycle (create → work → document → review → verdict)
-- `/create-task` — create a GitHub Issue
-- `/document-progress` — add a comment with .md link
-- `/pass-to-skeptic` — pass to skeptic subagent
-
-## Hooks
-
-- **UserPromptSubmit**: injects a reminder to create/identify an Issue before starting work.
-- **Stop**: blocks session end if progress is not documented on the Issue (with skeptic review if task is complete).
-
-## Configuration
-
-The plugin works globally across all projects. Each project's GitHub repo is auto-detected from `git remote -v`.
-
-## License
-
-MIT
+0.2.0 — hybrid STS+crypto lessons: gh primary, Status roles, absolute URLs, body checklist, PowerShell-safe snippets.

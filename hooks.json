@@ -5,7 +5,7 @@
       "hooks": [
         {
           "type": "command",
-          "command": "echo '{\"hookSpecificOutput\": {\"hookEventName\": \"UserPromptSubmit\", \"additionalContext\": \"GitHub Projects Workflow: Before starting work, ensure you have a GitHub Issue for this task. Use /github-projects-workflow to create or identify one. Do not start implementation without a linked Issue.\"}}'"
+          "command": "echo '{\"hookSpecificOutput\": {\"hookEventName\": \"UserPromptSubmit\", \"additionalContext\": \"GitHub Projects Workflow: Before implementation — Issue + board item required. Set Status In Progress when work starts. Use gh CLI (primary). Absolute blob URLs only after push+verify. Update Issue body checklist each phase.\"}}'"
         }
       ]
     }
@@ -16,7 +16,7 @@
       "hooks": [
         {
           "type": "prompt",
-          "prompt": "Before stopping, verify ALL three conditions:\n1. Did you create or identify a GitHub Issue for this session's work?\n2. Did you document your progress as a comment on that Issue with a link to any .md results file?\n3. If the task is complete, did you pass it to the skeptic subagent for review?\nIf ANY answer is NO, complete that step NOW before stopping. Do not stop until all three are YES or the task is trivial (1-3 sentence answer)."
+          "prompt": "Before stopping, verify:\n1. Issue + project board item exist for non-trivial work.\n2. Board Status matches reality (In Progress / Blocked / In review / Done).\n3. Progress documented: body checklist updated; any .md linked via absolute URL after push+verify.\n4. If project policy requires skeptic and task is complete — skeptic done.\nIf any required item is NO, finish it before stopping. Trivial Q&A (1-3 sentences, no code) is exempt."
         }
       ]
     }

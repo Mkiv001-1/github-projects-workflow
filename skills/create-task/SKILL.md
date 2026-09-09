@@ -1,60 +1,50 @@
 ---
 name: create-task
-description: Use when you need to create a new GitHub Issue for the current task
+description: Create a GitHub Issue for the current task, add it to the project board, set Ready/Backlog
 triggers:
   - user
   - model
 allowed-tools:
   - read
   - exec
-  - mcp__github__create_issue
-  - mcp__github__list_issues
 ---
 
-# Create GitHub Issue
+# Create GitHub Issue (+ board)
 
-Create a GitHub Issue to track the current task.
+`gh` CLI only (MCP optional fallback).
 
 ## Steps
 
-1. Determine the repo: run `git remote -v` to find `owner/repo` from the `origin` remote.
+1. `git remote -v` → `owner/repo`. Load project-local IDs (project number, field IDs).
+2. Search duplicates: `gh issue list --repo <owner>/<repo> --state open`.
+3. Create if needed:
 
-2. Check for an existing open Issue that matches:
-   - Use `mcp__github__list_issues` with `state: "open"`.
-   - If a matching Issue exists, return its URL and number. Do not create a duplicate.
-
-3. If no match, create a new Issue:
-   - `mcp__github__create_issue` with:
-     - `owner`: repo owner
-     - `repo`: repo name
-     - `title`: concise task description (imperative mood, e.g., "Add dark mode toggle")
-     - `body`: structured description (see template below)
-
-## Issue Body Template
-
-```markdown
+```powershell
+$body = @'
 ## Task
-<one-sentence description>
+<one-sentence>
 
 ## Context
-<why this task is needed, what triggered it>
+<why>
 
 ## Acceptance Criteria
 - [ ] <criterion 1>
 - [ ] <criterion 2>
-- [ ] Skeptic review passed
 
 ## Artifacts
 - Results: <will be linked after completion>
+'@
+$body | Set-Content -NoNewline -Encoding utf8 $env:TEMP\issue_body.txt
+gh issue create --repo <owner>/<repo> --title "Title" --body-file $env:TEMP\issue_body.txt
+Remove-Item $env:TEMP\issue_body.txt
 ```
 
-## After Creation
+4. Add to board:
 
-1. Record the Issue URL and number.
-2. Return them to the caller for use in the workflow lifecycle.
-
-## Fallback: gh CLI
-
-```bash
-gh issue create --repo <owner>/<repo> --title "Title" --body "Body"
+```powershell
+gh project item-add <N> --owner <OWNER> --url <issue-url> --format json
 ```
+
+5. Set Priority/Size if the project has those fields (`gh project item-edit`).
+6. Leave Status at **Backlog** or set **Ready** if acceptance criteria are already clear.
+7. Return Issue number + URL. Do not set In Progress until work starts.

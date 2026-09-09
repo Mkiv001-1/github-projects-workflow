@@ -1,46 +1,34 @@
 # GitHub Projects Workflow — Mandatory Task Tracking
 
-EVERY session MUST track work via GitHub Projects. No exceptions.
+EVERY non-trivial session MUST track work via GitHub Projects.
+
+**Canon:** `skills/github-projects-workflow/SKILL.md`  
+**Tooling:** `gh` CLI is PRIMARY. MCP github is optional fallback only.
 
 ## Lifecycle
 
-1. **CREATE/IDENTIFY** — Find or create a GitHub Issue for the current work before starting implementation.
-2. **WORK** — Keep the Issue URL in context. Comment on significant milestones.
-3. **DOCUMENT** — Create a `.md` file with results. Add a comment to the Issue linking to it.
-4. **SKEPTIC REVIEW** — Pass completed work to the skeptic subagent for adversarial review.
-5. **VERDICT** — Update Issue status (Done / Needs rework) based on skeptic verdict.
+1. **CREATE/IDENTIFY** — Issue + board item before implementation.
+2. **WORK** — Status = In Progress (or Blocked). Update body checklist.
+3. **DOCUMENT** — Push `.md` first, then absolute URL in comment.
+4. **REVIEW** — Skeptic / self-review per project policy. Status = In review.
+5. **VERDICT** — Status = Done + close Issue with evidence.
 
 ## Hard Rules
 
-- Do NOT start implementation work without a linked GitHub Issue.
-- Do NOT stop the session without documenting progress as an Issue comment.
-- Every `.md` results file MUST be linked in an Issue comment.
-- Skeptic review is MANDATORY before marking a task Done.
-- Issue comments must include: what was done, links to artifacts, git SHA.
+- No implementation without linked Issue **and** project board item.
+- Board Status is the WIP signal; keep ≤2 In Progress.
+- Ready = can start; Done = finished (not the same).
+- Absolute blob URLs only; verify remote file before commenting.
+- Body checklist is status; comments are history.
+- No `git add -A` / `git add .`.
 
 ## Exemptions
 
-Trivial questions answerable in 1-3 sentences (e.g., "what does this function do?") do NOT require a GitHub Issue. If you are writing code, changing configs, or making multi-step changes — you MUST track via GitHub Projects.
-
-## GitHub MCP Tools
-
-The `github` MCP server provides tools prefixed `mcp__github__`:
-- `create_issue` — create a new Issue
-- `list_issues` — find existing Issues
-- `get_issue` — check Issue state
-- `update_issue` — update title/body/state
-- `add_issue_comment` — document progress
-- `search_issues` — search by keywords
-
-If the MCP server is not available, fall back to `gh` CLI via `exec`:
-- `gh issue create --repo <owner>/<repo> --title "..." --body "..."`
-- `gh issue comment <num> --repo <owner>/<repo> --body "..."`
-- `gh issue list --repo <owner>/<repo> --state open`
-- `gh issue view <num> --repo <owner>/<repo>`
+Trivial Q&A (1–3 sentences, no code/config changes).
 
 ## Skills
 
-- `/github-projects-workflow` — main lifecycle skill
-- `/create-task` — create a GitHub Issue in the Project
-- `/document-progress` — add a comment with .md link to the Issue
-- `/pass-to-skeptic` — pass the task to the skeptic subagent
+- `/github-projects-workflow` — main lifecycle
+- `/create-task` — create Issue + board
+- `/document-progress` — verified comment with .md link
+- `/pass-to-skeptic` — adversarial review (when required)
