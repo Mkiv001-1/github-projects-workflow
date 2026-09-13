@@ -59,6 +59,19 @@ Milestones группируют backlog, это не Status.
 2. Project number, `PROJECT_ID`, field/option IDs — **только из project-local ids**
 3. Default branch обычно `main`
 
+## Toolkit — `scripts/ghp.py` (предпочтительный путь)
+
+Один Python CLI вместо ручных gh-заклинаний. Конфиг — `ghp.json` / `.devin/ghp.json`
+в репо (`{"owner","repo","project"}`), флаги или `GHP_*` env. Status ставится
+**по имени** (option IDs резолвятся живьём), гонка item-add→item-list ретраится,
+эпики связываются tasklist'ом `## Sub-tasks`, `doc` гейтит push→verify→comment.
+
+```bash
+python <canon>/scripts/ghp.py board | create | status | start | check | link | doc | review | block | done | fields
+```
+
+Ручные команды ниже — fallback и для понимания протокола.
+
 ## PowerShell (Windows)
 
 Не использовать `gh ... --jq '…|…'` — `|` ломается в PowerShell.

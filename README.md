@@ -68,7 +68,28 @@ MCP github optional; do not depend on it.
 | Skeptic pass | `skills/pass-to-skeptic/` |
 | Rule | `rules/task-tracking.md` |
 | Project starter | `templates/project-local/` |
+| Lifecycle CLI | `scripts/ghp.py` |
+
+## Toolkit — `scripts/ghp.py`
+
+Single Python CLI wrapping `gh`; per-repo config via `ghp.json` or `.devin/ghp.json`
+(`{"owner","repo","project"}`), flags, or `GHP_*` env. Statuses set **by name**
+(option IDs resolved live — no hardcoding); item-add→list race retried;
+epic↔task via `## Sub-tasks` tasklists; `doc` enforces push→verify→comment.
+
+```bash
+python scripts/ghp.py board                    # items with Status
+python scripts/ghp.py create "Title" --body-file f.md --status Todo --epic 2
+python scripts/ghp.py start 12                 # In Progress
+python scripts/ghp.py check 12 "pattern"       # tick first unchecked body item
+python scripts/ghp.py link 2 12                # epic tasklist
+python scripts/ghp.py doc 12 docs/x.md         # verify blob on origin, comment URL
+python scripts/ghp.py review 12 / block 12
+python scripts/ghp.py done 12 --comment-file evidence.md   # Done + close
+python scripts/ghp.py fields                   # dump field/option IDs
+```
 
 ## Version
 
-0.2.0 — hybrid STS+crypto lessons: gh primary, Status roles, absolute URLs, body checklist, PowerShell-safe snippets.
+0.3.0 — added `scripts/ghp.py` lifecycle CLI (name-resolved statuses, race-safe
+item-add, epic tasklists, verified doc comments).
