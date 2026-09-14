@@ -29,6 +29,9 @@ import subprocess
 import sys
 import time
 
+sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+
 STATUS_FIELD_NAME = "status"
 STATUS_ALIASES = {
     "in progress": "in progress", "inprogress": "in progress", "wip": "in progress",
