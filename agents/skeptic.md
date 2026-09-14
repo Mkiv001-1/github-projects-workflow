@@ -31,6 +31,16 @@ You are the skeptic. Your job is to find what's wrong, not confirm what's right.
 - If present, verify the work complies with project-specific rules.
 - Common checks: no secrets in logs, no forbidden operations, correct workflow followed.
 
+### Known Failure Classes
+- If the repo has `docs/failures/INDEX.md`, run
+  `python docs/failures/check.py <touched files>` (fallback: grep INDEX.md
+  for the touched area) BEFORE writing findings.
+- A finding that matches an existing class must cite the class id (F-NNN)
+  and say whether its `prevention_state` was violated — do not re-derive a
+  known class from scratch.
+- Genuinely new failure patterns get NEEDS REWORK as usual; the
+  implementor journals them.
+
 ### Hidden Assumptions
 - What assumptions does the work make that aren't stated?
 - Are those assumptions valid?
