@@ -43,7 +43,8 @@ def die(msg, code=1):
 
 
 def gh(*args, check=True):
-    r = subprocess.run(["gh", *args], capture_output=True, text=True)
+    r = subprocess.run(["gh", *args], capture_output=True, text=True,
+                       encoding="utf-8", errors="replace")
     if check and r.returncode != 0:
         die(f"gh {' '.join(args)} -> {r.returncode}\n{r.stderr.strip()}")
     return r
