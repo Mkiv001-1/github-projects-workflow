@@ -234,24 +234,34 @@ def _norm_verdict(v):
     return " ".join(v.split()).upper()
 
 
+FENCE_RE = re.compile(r"```.*?```", re.S)
+
+
 def count_rounds(comments):
     """comments = [body, ...] in chronological order ->
-    (slots {round_no: verdict}, heading_sourced {round_no})."""
+    (slots {round_no: verdict}, heading_sourced {round_no}).
+
+    Matches within a comment are processed in TEXTUAL order — a verdict
+    heading following a `Skeptic rN` recap claims the NEXT slot, it does
+    not steal the recapped round's slot. Heading verdicts are
+    authoritative over echoes for the same slot; echoes fill gaps only.
+    Fenced code blocks are stripped — a quoted verdict template is not a
+    verdict."""
     slots, heading_slots = {}, set()
     for body in comments:
-        for m in HEAD_RE.finditer(body):
-            n, v = m.group(1), _norm_verdict(m.group(2))
-            if n:
-                slots[int(n)] = v
-                heading_slots.add(int(n))
+        body = FENCE_RE.sub("", body)
+        matches = ([(m.start(), m, True) for m in HEAD_RE.finditer(body)]
+                   + [(m.start(), m, False) for m in SUMM_RE.finditer(body)])
+        for _, m, is_head in sorted(matches, key=lambda t: t[0]):
+            v = _norm_verdict(m.group(2))
+            n = int(m.group(1)) if m.group(1) else None
+            if is_head:
+                if n is None:
+                    n = (max(slots) if slots else 0) + 1
+                slots[n] = v
+                heading_slots.add(n)
             else:
-                nxt = (max(slots) if slots else 0) + 1
-                slots[nxt] = v
-                heading_slots.add(nxt)
-        for m in SUMM_RE.finditer(HEAD_RE.sub("", body)):
-            n = int(m.group(1))
-            if n not in slots:  # echoes fill gaps only, never override
-                slots[n] = _norm_verdict(m.group(2))
+                slots.setdefault(n, v)  # echo: fill gaps, never override
     return slots, heading_slots
 
 
@@ -261,8 +271,10 @@ def cmd_rounds(owner, repo, proj_num, proj_id, num, cap, escalate):
     cycling silently (same spirit as the self-heal cap). Only verdicts
     posted in a recognized format are counted — a verdict living only in
     a review doc is invisible here (post the heading)."""
-    r = gh("issue", "view", str(num), "--repo", repo, "--json", "comments")
-    comments = [c["body"] for c in json.loads(r.stdout)["comments"]]
+    r = gh("api", f"repos/{repo}/issues/{num}/comments",
+           "--paginate", "--slurp")
+    pages = json.loads(r.stdout)  # slurp: array of per-page arrays
+    comments = [c["body"] for page in pages for c in page]
     slots, _ = count_rounds(comments)
     counts = {"PASS": 0, "NEEDS REWORK": 0, "FAIL": 0}
     for v in slots.values():
