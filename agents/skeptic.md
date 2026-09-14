@@ -41,6 +41,16 @@ You are the skeptic. Your job is to find what's wrong, not confirm what's right.
 - Genuinely new failure patterns get NEEDS REWORK as usual; the
   implementor journals them.
 
+### Rework Rounds (regression control)
+- On round N>1, verify EVERY prior-round finding maps to a journal class
+  (existing F-NNN cited, or a new class) — unmapped findings mean the
+  journal loop is being skipped.
+- Review the rework DIFF adversarially, not just re-confirmation of the
+  findings: a fix for finding A must not regress adjacent paths.
+- Require evidence the original failing probes were re-run AND the test
+  suite covering the touched area is green — "fixed the finding" without
+  re-running what caught it is NEEDS REWORK.
+
 ### Hidden Assumptions
 - What assumptions does the work make that aren't stated?
 - Are those assumptions valid?
@@ -48,12 +58,14 @@ You are the skeptic. Your job is to find what's wrong, not confirm what's right.
 
 ## Verdict
 
-Write your verdict as a comment on the GitHub Issue using `mcp__github__add_issue_comment`:
+Write your verdict as a comment on the GitHub Issue using `mcp__github__add_issue_comment`.
+Include the round number in the heading (`r1`, `r2`, …) — count prior
+`Skeptic Review` comments on the issue; the orchestrator may supply it.
 
 ### PASS
 Work is solid, claims are verified, no significant issues found.
 ```
-## Skeptic Review — PASS
+## Skeptic Review rN — PASS
 
 ### Verified
 - <list of claims verified against source data>
@@ -68,7 +80,7 @@ Work is solid. Recommend marking as Done.
 ### NEEDS REWORK
 Work has specific fixable issues but is fundamentally sound.
 ```
-## Skeptic Review — NEEDS REWORK
+## Skeptic Review rN — NEEDS REWORK
 
 ### Issues Found
 1. <specific issue with evidence>
@@ -84,7 +96,7 @@ Fix the listed issues and re-submit for review.
 ### FAIL
 Fundamental problems that require rethinking the approach.
 ```
-## Skeptic Review — FAIL
+## Skeptic Review rN — FAIL
 
 ### Fundamental Problems
 1. <problem with evidence>

@@ -20,11 +20,15 @@ Subcommands:
   link EPIC TASK                  append "- [ ] #TASK" under ## Sub-tasks
   comment NUM --file F            add comment
   doc NUM PATH [--text S]         verify blob on origin/main, comment URL
+  rounds NUM [--cap N] [--escalate]
+                                  count Skeptic Review verdicts on NUM;
+                                  exit 2 when NEEDS REWORK >= cap (def 3)
   fields                          dump project fields + option ids
 """
 
 import json
 import os
+import re
 import subprocess
 import sys
 import time
@@ -209,6 +213,59 @@ def cmd_done(owner, repo, proj_num, proj_id, num, comment_file):
     print(f"#{num} Done + closed")
 
 
+# Verdict appears either as the standard heading "## Skeptic Review [rN] —
+# VERDICT" or as a summary line "Skeptic rN VERDICT". Rounds are keyed by
+# rN; headings without rN occupy the earliest free slots (they are
+# historically the first rounds).
+HEAD_RE = re.compile(
+    r"skeptic\s+review\s*(?:r(\d+))?\s*[—–-]+\s*(PASS|NEEDS\s+REWORK|FAIL)",
+    re.I)
+SUMM_RE = re.compile(
+    r"\bskeptic\s+r(\d+)\s*[—–-]?\s*(PASS|NEEDS\s+REWORK|FAIL)", re.I)
+
+
+def _norm_verdict(v):
+    return " ".join(v.split()).upper()
+
+
+def cmd_rounds(owner, repo, proj_num, proj_id, num, cap, escalate):
+    """Count skeptic verdict comments on an issue. Cap NEEDS-REWORK loops:
+    after `cap` rework rounds the loop escalates to a human instead of
+    cycling silently (same spirit as the self-heal cap)."""
+    r = gh("issue", "view", str(num), "--repo", repo,
+           "--json", "comments", "-q", ".comments[].body")
+    text = r.stdout
+    tagged = {}   # round_no -> verdict
+    free = []     # verdicts from unnumbered headings -> earliest free slots
+    for m in HEAD_RE.finditer(text):
+        n, v = m.group(1), _norm_verdict(m.group(2))
+        (tagged.__setitem__(int(n), v) if n else free.append(v))
+    for m in SUMM_RE.finditer(HEAD_RE.sub("", text)):
+        tagged[int(m.group(1))] = _norm_verdict(m.group(2))
+    for v in free:
+        n = 1
+        while n in tagged:
+            n += 1
+        tagged[n] = v
+    counts = {"PASS": 0, "NEEDS REWORK": 0, "FAIL": 0}
+    for v in tagged.values():
+        counts[v] += 1
+    nr = counts["NEEDS REWORK"]
+    nxt = (max(tagged) if tagged else 0) + 1
+    print(f"#{num} skeptic rounds: NEEDS_REWORK={nr} PASS={counts['PASS']} "
+          f"FAIL={counts['FAIL']} — next review = r{nxt} (cap {cap})")
+    if nr >= cap:
+        msg = (f"skeptic round cap reached ({nr} NEEDS REWORK >= {cap}) — "
+               f"escalate to human; do NOT launch another rework cycle")
+        if escalate:
+            gh("issue", "comment", str(num), "--repo", repo,
+               "--body", f"**Round cap:** {msg}")
+            set_status(owner, proj_num, proj_id, num, "Blocked")
+            print(f"#{num} -> Blocked, escalation comment posted")
+        print(msg)
+        sys.exit(2)
+
+
 def cmd_fields(owner, proj_id):
     q = """query($id:ID!){node(id:$id){... on ProjectV2{
       fields(first:30){nodes{... on ProjectV2SingleSelectField{
@@ -246,6 +303,10 @@ def main():
 
     m = sub.add_parser("comment"); m.add_argument("num", type=int); m.add_argument("--file", required=True)
 
+    r_ = sub.add_parser("rounds"); r_.add_argument("num", type=int)
+    r_.add_argument("--cap", type=int, default=3)
+    r_.add_argument("--escalate", action="store_true")
+
     o = sub.add_parser("doc"); o.add_argument("num", type=int); o.add_argument("path")
     o.add_argument("--text")
 
@@ -274,6 +335,8 @@ def main():
         print(f"#{a.num} commented")
     elif a.cmd == "doc":
         cmd_doc(owner, repo, a.num, a.path, a.text)
+    elif a.cmd == "rounds":
+        cmd_rounds(owner, repo, proj_num, pid, a.num, a.cap, a.escalate)
     elif a.cmd == "fields":
         cmd_fields(owner, pid)
 
