@@ -213,55 +213,76 @@ def cmd_done(owner, repo, proj_num, proj_id, num, comment_file):
     print(f"#{num} Done + closed")
 
 
-# Verdict appears either as the standard heading "## Skeptic Review [rN] —
-# VERDICT" or as a summary line "Skeptic rN VERDICT". Rounds are keyed by
-# rN; headings without rN occupy the earliest free slots (they are
-# historically the first rounds).
+# A skeptic round leaves evidence in issue comments in two formats:
+#   heading:  "## Skeptic Review [rN] — VERDICT"  (authoritative)
+#   echo:     "Skeptic rN VERDICT ..."            (implementor summaries)
+# Both are line-anchored — mid-prose mentions ("the skeptic review -
+# pass criteria") don't count. Round identity = its rN slot (F-011:
+# dedupe identity); a heading without rN starts a NEW round — comments
+# are processed chronologically and a verdict heading always precedes
+# its own round's echoes. Echoes never overwrite a heading-sourced slot.
 HEAD_RE = re.compile(
-    r"skeptic\s+review\s*(?:r(\d+))?\s*[—–-]+\s*(PASS|NEEDS\s+REWORK|FAIL)",
-    re.I)
+    r"^\s*#{1,6}\s+skeptic\s+review\s*(?:r(\d+))?\s*[—–-]+\s*"
+    r"(PASS|NEEDS\s+REWORK|FAIL)\b",
+    re.I | re.M)
 SUMM_RE = re.compile(
-    r"\bskeptic\s+r(\d+)\s*[—–-]?\s*(PASS|NEEDS\s+REWORK|FAIL)", re.I)
+    r"^\s*skeptic\s+r(\d+)\s*[—–-]?\s*(PASS|NEEDS\s+REWORK|FAIL)\b",
+    re.I | re.M)
 
 
 def _norm_verdict(v):
     return " ".join(v.split()).upper()
 
 
+def count_rounds(comments):
+    """comments = [body, ...] in chronological order ->
+    (slots {round_no: verdict}, heading_sourced {round_no})."""
+    slots, heading_slots = {}, set()
+    for body in comments:
+        for m in HEAD_RE.finditer(body):
+            n, v = m.group(1), _norm_verdict(m.group(2))
+            if n:
+                slots[int(n)] = v
+                heading_slots.add(int(n))
+            else:
+                nxt = (max(slots) if slots else 0) + 1
+                slots[nxt] = v
+                heading_slots.add(nxt)
+        for m in SUMM_RE.finditer(HEAD_RE.sub("", body)):
+            n = int(m.group(1))
+            if n not in slots:  # echoes fill gaps only, never override
+                slots[n] = _norm_verdict(m.group(2))
+    return slots, heading_slots
+
+
 def cmd_rounds(owner, repo, proj_num, proj_id, num, cap, escalate):
     """Count skeptic verdict comments on an issue. Cap NEEDS-REWORK loops:
     after `cap` rework rounds the loop escalates to a human instead of
-    cycling silently (same spirit as the self-heal cap)."""
-    r = gh("issue", "view", str(num), "--repo", repo,
-           "--json", "comments", "-q", ".comments[].body")
-    text = r.stdout
-    tagged = {}   # round_no -> verdict
-    free = []     # verdicts from unnumbered headings -> earliest free slots
-    for m in HEAD_RE.finditer(text):
-        n, v = m.group(1), _norm_verdict(m.group(2))
-        (tagged.__setitem__(int(n), v) if n else free.append(v))
-    for m in SUMM_RE.finditer(HEAD_RE.sub("", text)):
-        tagged[int(m.group(1))] = _norm_verdict(m.group(2))
-    for v in free:
-        n = 1
-        while n in tagged:
-            n += 1
-        tagged[n] = v
+    cycling silently (same spirit as the self-heal cap). Only verdicts
+    posted in a recognized format are counted — a verdict living only in
+    a review doc is invisible here (post the heading)."""
+    r = gh("issue", "view", str(num), "--repo", repo, "--json", "comments")
+    comments = [c["body"] for c in json.loads(r.stdout)["comments"]]
+    slots, _ = count_rounds(comments)
     counts = {"PASS": 0, "NEEDS REWORK": 0, "FAIL": 0}
-    for v in tagged.values():
+    for v in slots.values():
         counts[v] += 1
     nr = counts["NEEDS REWORK"]
-    nxt = (max(tagged) if tagged else 0) + 1
+    nxt = (max(slots) if slots else 0) + 1
     print(f"#{num} skeptic rounds: NEEDS_REWORK={nr} PASS={counts['PASS']} "
           f"FAIL={counts['FAIL']} — next review = r{nxt} (cap {cap})")
     if nr >= cap:
         msg = (f"skeptic round cap reached ({nr} NEEDS REWORK >= {cap}) — "
                f"escalate to human; do NOT launch another rework cycle")
         if escalate:
+            try:
+                set_status(owner, proj_num, proj_id, num, "Blocked")
+                print(f"#{num} -> Blocked")
+            except SystemExit:
+                print("warn: could not set Blocked (issue not on board?)")
             gh("issue", "comment", str(num), "--repo", repo,
                "--body", f"**Round cap:** {msg}")
-            set_status(owner, proj_num, proj_id, num, "Blocked")
-            print(f"#{num} -> Blocked, escalation comment posted")
+            print(f"#{num} escalation comment posted")
         print(msg)
         sys.exit(2)
 
