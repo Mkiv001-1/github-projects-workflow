@@ -17,8 +17,9 @@ Use when project policy requires skeptic (always, or experiments/research only).
 ## Steps
 
 1. **Round control:** `python <canon>/scripts/ghp.py rounds <issue>` —
-   counts prior Skeptic Review verdicts. If NEEDS REWORK >= cap (3,
-   same limit as the self-heal cap): `--escalate` posts a comment and
+   counts prior Skeptic Review verdicts. If NEEDS REWORK >= cap (6 by
+   default; the self-heal fix-attempt cap stays 3): `--escalate` posts
+   a comment and
    sets Status → **Blocked**. Do NOT launch another silent rework cycle —
    a human decides whether the approach itself is wrong.
 2. Set board Status → **In review**.

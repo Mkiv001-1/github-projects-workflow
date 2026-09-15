@@ -22,7 +22,7 @@ Subcommands:
   doc NUM PATH [--text S]         verify blob on origin/main, comment URL
   rounds NUM [--cap N] [--escalate]
                                   count Skeptic Review verdicts on NUM;
-                                  exit 2 when NEEDS REWORK >= cap (def 3)
+                                  exit 2 when NEEDS REWORK >= cap (def 6)
   fields                          dump project fields + option ids
 """
 
@@ -337,7 +337,7 @@ def main():
     m = sub.add_parser("comment"); m.add_argument("num", type=int); m.add_argument("--file", required=True)
 
     r_ = sub.add_parser("rounds"); r_.add_argument("num", type=int)
-    r_.add_argument("--cap", type=int, default=3)
+    r_.add_argument("--cap", type=int, default=6)
     r_.add_argument("--escalate", action="store_true")
 
     o = sub.add_parser("doc"); o.add_argument("num", type=int); o.add_argument("path")
