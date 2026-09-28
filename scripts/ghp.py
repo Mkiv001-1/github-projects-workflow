@@ -14,7 +14,8 @@ Config file keys: {"owner": "...", "repo": "owner/name", "project": 5}
 Subcommands:
   create TITLE [--body-file F] [--status NAME] [--epic N]
   board [--status NAME]           list items: num, status, title
-  status NUM NAME                 set board Status by name
+  status NUM [NAME]               set board Status by name;
+                                  NAME omitted -> print current status
   start NUM | review NUM | block NUM | done NUM [--comment-file F]
   check NUM PATTERN               tick first unchecked "- [ ]" line matching
   link EPIC TASK                  append "- [ ] #TASK" under ## Sub-tasks
@@ -120,6 +121,12 @@ def set_status(owner, proj_num, proj_id, issue_num, status_name):
     gh("project", "item-edit", "--project-id", proj_id, "--id", item["id"],
        "--field-id", field_id, "--single-select-option-id", opt_id)
     print(f"#{issue_num} status -> {status_name}")
+
+
+def show_status(owner, proj_num, issue_num):
+    """Read path: `status NUM` with no NAME prints the current status."""
+    item = find_item(owner, proj_num, issue_num, retries=1)
+    print(f"#{issue_num} status: {item.get('status') or '(not set)'}")
 
 
 def issue_body(repo, num):
@@ -322,7 +329,8 @@ def main():
 
     b = sub.add_parser("board"); b.add_argument("--status")
 
-    s = sub.add_parser("status"); s.add_argument("num", type=int); s.add_argument("name")
+    s = sub.add_parser("status"); s.add_argument("num", type=int)
+    s.add_argument("name", nargs="?")
 
     for name, st in (("start", "In Progress"), ("review", "Review"),
                      ("block", "Blocked")):
@@ -354,7 +362,10 @@ def main():
     elif a.cmd == "board":
         cmd_board(owner, proj_num, a.status)
     elif a.cmd == "status":
-        set_status(owner, proj_num, pid, a.num, a.name)
+        if a.name is None:
+            show_status(owner, proj_num, a.num)
+        else:
+            set_status(owner, proj_num, pid, a.num, a.name)
     elif a.cmd in ("start", "review", "block"):
         set_status(owner, proj_num, pid, a.num, a._st)
     elif a.cmd == "done":
