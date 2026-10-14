@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""ghp — GitHub Projects lifecycle CLI for all D:\\Git repos.
+"""ghp — GitHub Projects lifecycle CLI for all C:\\git repos.
 
 Wraps `gh` CLI. Fixes the manual-workflow pitfalls:
   * status set by NAME (option IDs resolved dynamically per project)
