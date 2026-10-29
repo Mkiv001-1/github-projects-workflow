@@ -16,7 +16,7 @@
       "hooks": [
         {
           "type": "prompt",
-          "prompt": "Before stopping, verify:\n1. Issue + project board item exist for non-trivial work.\n2. Board Status matches reality (In Progress / Blocked / In review / Done).\n3. Progress documented: body checklist updated; any .md linked via absolute URL after push+verify.\n4. If project policy requires skeptic and task is complete — skeptic done.\nIf any required item is NO, finish it before stopping. Trivial Q&A (1-3 sentences, no code) is exempt."
+          "prompt": "Before stopping, verify:\n1. Issue + project board item exist for non-trivial work.\n2. Board Status matches reality (In Progress / Blocked / In review / Done).\n3. Progress documented: body checklist updated; any .md linked via absolute URL after push+verify.\n4. If project policy requires skeptic and task is complete — skeptic done.\nIf any required item is NO, finish it before stopping.\nEXEMPT — do not block: advisory/Q&A answers even when they contain commands, paths, URLs, or shortcut tables for the user to run themselves; one-off local fetches/copies that change no repo state; usage notes posted as comments on the governing issue. Judge by whether repo/config/code changed, not by message content."
         }
       ]
     }
