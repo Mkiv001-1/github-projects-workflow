@@ -27,7 +27,7 @@ devin plugins install Mkiv001-1/github-projects-workflow
 
 ## For every D:\Git project
 
-1. Keep this repo as **canon** (`D:\Git\github-projects-workflow`).
+1. Keep this repo as **canon** (`C:\git\github-projects-workflow`).
 2. In each project, add a **thin** local skill with repo/project IDs only:
    - `.devin/skills/github-projects-workflow/` (or `github-project/`)
    - `references/ids.md` — PROJECT_NUM, PROJECT_ID, Status/Priority/Size option IDs
@@ -69,6 +69,10 @@ MCP github optional; do not depend on it.
 | Rule | `rules/task-tracking.md` |
 | Project starter | `templates/project-local/` |
 | Lifecycle CLI | `scripts/ghp.py` |
+| F-008 exec gate | `scripts/f008_gate.py` (PreToolUse hook) |
+| ps1-encoding gate | `scripts/ps1_gate.py` (PreToolUse hook) |
+| WSL payload runner | `scripts/wsl-run.sh` |
+| Hooks template | `templates/project-local/hooks.v1.json` |
 
 ## Toolkit — `scripts/ghp.py`
 
@@ -80,7 +84,10 @@ epic↔task via `## Sub-tasks` tasklists; `doc` enforces push→verify→comment
 ```bash
 python scripts/ghp.py board                    # items with Status
 python scripts/ghp.py create "Title" --body-file f.md --status Todo --epic 2
+                                               # idempotent: same-title open issue is reused
 python scripts/ghp.py start 12                 # In Progress
+python scripts/ghp.py status 12                # read current Status
+python scripts/ghp.py status 12 "In review"    # or: --set "In review"
 python scripts/ghp.py check 12 "pattern"       # tick first unchecked body item
 python scripts/ghp.py link 2 12                # epic tasklist
 python scripts/ghp.py doc 12 docs/x.md         # verify blob on origin, comment URL
@@ -89,7 +96,21 @@ python scripts/ghp.py done 12 --comment-file evidence.md   # Done + close
 python scripts/ghp.py fields                   # dump field/option IDs
 ```
 
+## PreToolUse gates (payload corruption classes)
+
+`f008_gate.py` blocks `wsl ... -c` / nested `-c` commands carrying shell
+metacharacters outside single quotes (outer-shell expansion corrupts the
+payload — F-008, 90+ recorded instances). `ps1_gate.py` blocks non-ASCII
+writes to `.ps1/.bat/.cmd/.vbs` (PS 5.1 ANSI-parse breaks them — F-005).
+Install per-repo via `.devin/hooks.v1.json` — see
+`templates/project-local/hooks.v1.json`. Remedy pattern is always
+payload-as-file (`--body-file`, `-F body=@file`, `wsl-run.sh`).
+
 ## Version
 
-0.3.0 — added `scripts/ghp.py` lifecycle CLI (name-resolved statuses, race-safe
-item-add, epic tasklists, verified doc comments).
+0.3.0 — `ghp.py` lifecycle CLI (name-resolved statuses, race-safe item-add,
+epic tasklists, verified doc comments) plus forgiving-CLI update: `status`
+read-path + `--set`, idempotent `create`, `content=None` guards, comments
+fetch without `--slurp` (gh < 2.48), alias candidate lists (Todo/Backlog,
+Review/In review), informational round-cap on closed issues; F-008/ps1
+PreToolUse gate scripts + hooks template.

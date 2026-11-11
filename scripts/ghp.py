@@ -13,8 +13,12 @@ Config file keys: {"owner": "...", "repo": "owner/name", "project": 5}
 
 Subcommands:
   create TITLE [--body-file F] [--status NAME] [--epic N]
+                                  (idempotent: reuses an open issue with
+                                  an identical title; orphan URL reported
+                                  on follow-up failure)
   board [--status NAME]           list items: num, status, title
-  status NUM NAME                 set board Status by name
+  status NUM [NAME | --set NAME]  set board Status by name;
+                                  NAME omitted -> print current status
   start NUM | review NUM | block NUM | done NUM [--comment-file F]
   check NUM PATTERN               tick first unchecked "- [ ]" line matching
   link EPIC TASK                  append "- [ ] #TASK" under ## Sub-tasks
@@ -37,10 +41,16 @@ sys.stdout.reconfigure(encoding="utf-8", errors="replace")
 sys.stderr.reconfigure(encoding="utf-8", errors="replace")
 
 STATUS_FIELD_NAME = "status"
+# Alias -> candidate option names, tried in order. Boards name the same
+# concept differently ("Todo" vs "Backlog", "Review" vs "In review"), so
+# one alias maps to a preference LIST, not a single name.
 STATUS_ALIASES = {
-    "in progress": "in progress", "inprogress": "in progress", "wip": "in progress",
-    "review": "review", "in review": "review", "blocked": "blocked",
-    "todo": "todo", "backlog": "todo", "ready": "ready", "done": "done",
+    "in progress": ["in progress"], "inprogress": ["in progress"],
+    "wip": ["in progress"],
+    "review": ["review", "in review"], "in review": ["in review", "review"],
+    "blocked": ["blocked"],
+    "todo": ["todo", "backlog"], "backlog": ["backlog", "todo"],
+    "ready": ["ready"], "done": ["done"],
 }
 
 
@@ -82,10 +92,11 @@ def project_items(owner, num):
     return json.loads(r.stdout)["items"]
 
 
-def find_item(owner, num, issue_num, retries=6):
+def find_item(owner, num, issue_num, retries=10):
     for i in range(retries):
         for it in project_items(owner, num):
-            if it["content"].get("number") == issue_num:
+            # content=None for deleted items, no number for drafts
+            if (it.get("content") or {}).get("number") == issue_num:
                 return it
         if i < retries - 1:
             time.sleep(1.5)
@@ -105,21 +116,38 @@ def status_options(owner, proj_id):
     die(f"no '{STATUS_FIELD_NAME}' single-select field on project")
 
 
-def set_status(owner, proj_num, proj_id, issue_num, status_name):
-    opts, field_id = status_options(owner, proj_id)
-    want = STATUS_ALIASES.get(status_name.strip().lower(), status_name.strip().lower())
-    # exact match first, then prefix match ("in" -> "in progress")
-    opt_id = opts.get(want)
-    if not opt_id:
+def resolve_status(opts, status_name):
+    """opts = {normalized_name: option_id} -> option_id | None.
+
+    Candidates: the literal name, then its alias preference list. Exact
+    match across all candidates first, then a unique prefix/substring
+    match ("in" -> "in progress")."""
+    raw = status_name.strip().lower()
+    candidates = [raw] + STATUS_ALIASES.get(raw, [])
+    for want in candidates:
+        if want in opts:
+            return opts[want]
+    for want in candidates:
         hits = [k for k in opts if k.startswith(want) or want in k]
         if len(hits) == 1:
-            opt_id = opts[hits[0]]
+            return opts[hits[0]]
+    return None
+
+
+def set_status(owner, proj_num, proj_id, issue_num, status_name):
+    opts, field_id = status_options(owner, proj_id)
+    opt_id = resolve_status(opts, status_name)
     if not opt_id:
         die(f"status '{status_name}' not found; options: {', '.join(opts)}")
     item = find_item(owner, proj_num, issue_num)
     gh("project", "item-edit", "--project-id", proj_id, "--id", item["id"],
        "--field-id", field_id, "--single-select-option-id", opt_id)
     print(f"#{issue_num} status -> {status_name}")
+
+
+def show_status(owner, proj_num, issue_num):
+    item = find_item(owner, proj_num, issue_num, retries=1)
+    print(f"#{issue_num} status: {item.get('status') or '(not set)'}")
 
 
 def issue_body(repo, num):
@@ -138,21 +166,58 @@ def edit_body(repo, num, body):
         os.unlink(path)
 
 
+def find_open_issue_by_title(repo, title):
+    """-> {number,url} | None: exact title match among OPEN issues.
+    Multiple hits (pre-existing dups) -> lowest number (the original)."""
+    r = gh("issue", "list", "--repo", repo, "--state", "open",
+           "--json", "number,title,url", "--limit", "500")
+    items = json.loads(r.stdout)
+    # TODO: switch to `gh api --paginate` when open issues approach the cap
+    if len(items) >= 500:  # silent truncation -> check unreliable
+        die("issue list hit --limit 500 — existence check unreliable")
+    hits = [it for it in items if it["title"] == title]
+    return min(hits, key=lambda it: it["number"]) if hits else None
+
+
+def on_board(owner, proj_num, issue_num):
+    # content=None for deleted/unresolved items; no number for drafts
+    return any((it.get("content") or {}).get("number") == issue_num
+               for it in project_items(owner, proj_num))
+
+
 def cmd_create(owner, repo, proj_num, proj_id, a):
-    args = ["issue", "create", "--repo", repo, "--title", a.title]
-    if a.body_file:
-        args += ["--body-file", a.body_file]
-    elif a.body:
-        args += ["--body", a.body]
+    existing = find_open_issue_by_title(repo, a.title)
+    if existing:
+        num, url = existing["number"], existing["url"]
+        print(f"create: #{num} already exists (same title) — reusing {url}")
     else:
-        args += ["--body", ""]
-    url = gh(*args).stdout.strip()
-    num = int(url.rstrip("/").rsplit("/", 1)[1])
-    gh("project", "item-add", str(proj_num), "--owner", owner, "--url", url)
-    if a.status:
-        set_status(owner, proj_num, proj_id, num, a.status)
-    if a.epic:
-        cmd_link(repo, a.epic, num)
+        args = ["issue", "create", "--repo", repo, "--title", a.title]
+        if a.body_file:
+            args += ["--body-file", a.body_file]
+        elif a.body:
+            args += ["--body", a.body]
+        else:
+            args += ["--body", ""]
+        r = gh(*args)
+        urls = re.findall(r"(https://\S+/issues/(\d+))", r.stdout)
+        if not urls:
+            die(f"cannot parse issue URL: stdout={r.stdout!r} "
+                f"stderr={r.stderr!r}")
+        url, num = urls[-1][0], int(urls[-1][1])  # created URL is last
+    try:
+        if not on_board(owner, proj_num, num):
+            gh("project", "item-add", str(proj_num), "--owner", owner,
+               "--url", url)
+        # reuse: don't clobber status unless --status given explicitly
+        status = a.status or ("Todo" if not existing else None)
+        if status:
+            set_status(owner, proj_num, proj_id, num, status)
+        if a.epic:
+            cmd_link(repo, a.epic, num)
+    except SystemExit:
+        print(f"ghp: warning: follow-up failed for {url}; "
+              f"retry 'create' is safe (idempotent)", file=sys.stderr)
+        raise
     print(url)
 
 
@@ -222,11 +287,11 @@ def cmd_done(owner, repo, proj_num, proj_id, num, comment_file):
 # are processed chronologically and a verdict heading always precedes
 # its own round's echoes. Echoes never overwrite a heading-sourced slot.
 HEAD_RE = re.compile(
-    r"^\s*#{1,6}\s+skeptic\s+review\s*(?:r(\d+))?\s*[—–-]+\s*"
-    r"(PASS|NEEDS\s+REWORK|FAIL)\b",
+    r"^\s*#{1,6}\s+skeptic\s+review\s*(?:r(\d+))?\s*[:—–-]+\s*"
+    r"(PASS|NEEDS[\s_-]+REWORK|FAIL)\b",
     re.I | re.M)
 SUMM_RE = re.compile(
-    r"^\s*skeptic\s+r(\d+)\s*[—–-]?\s*(PASS|NEEDS\s+REWORK|FAIL)\b",
+    r"^\s*skeptic\s+r(\d+)\s*[—–-]?\s*(PASS|NEEDS[\s_-]+REWORK|FAIL)\b",
     re.I | re.M)
 
 
@@ -265,25 +330,54 @@ def count_rounds(comments):
     return slots, heading_slots
 
 
+def issue_comments(repo, num):
+    """-> [body, ...] chronological (dies on gh failure).
+
+    `--paginate --jq '.[]'` emits one compact JSON object per page-item —
+    works on gh < 2.48 which lacks `--slurp`. Real newlines in bodies
+    stay escaped as \\n, so line-wise parsing is safe (keep the strip()
+    guard — never parse via bare .split('\\n')). Do NOT use `--jq 'add'`:
+    it merges page objects into one dict, breaking the shape."""
+    r = gh("api", f"repos/{repo}/issues/{num}/comments",
+           "--paginate", "--jq", ".[]")
+    return [json.loads(line)["body"]
+            for line in r.stdout.splitlines() if line.strip()]
+
+
+def issue_state(repo, num):
+    """-> 'OPEN' | 'CLOSED' | ... — dies (SystemExit) on gh failure."""
+    r = gh("issue", "view", str(num), "--repo", repo,
+           "--json", "state", "-q", ".state")
+    return r.stdout.strip().upper()
+
+
 def cmd_rounds(owner, repo, proj_num, proj_id, num, cap, escalate):
     """Count skeptic verdict comments on an issue. Cap NEEDS-REWORK loops:
     after `cap` rework rounds the loop escalates to a human instead of
     cycling silently (same spirit as the self-heal cap). Only verdicts
     posted in a recognized format are counted — a verdict living only in
-    a review doc is invisible here (post the heading)."""
-    r = gh("api", f"repos/{repo}/issues/{num}/comments",
-           "--paginate", "--slurp")
-    pages = json.loads(r.stdout)  # slurp: array of per-page arrays
-    comments = [c["body"] for page in pages for c in page]
+    a review doc is invisible here (post the heading). On a CLOSED issue
+    the cap is informational only (exit 0, no mutation)."""
+    comments = issue_comments(repo, num)
     slots, _ = count_rounds(comments)
     counts = {"PASS": 0, "NEEDS REWORK": 0, "FAIL": 0}
     for v in slots.values():
         counts[v] += 1
     nr = counts["NEEDS REWORK"]
     nxt = (max(slots) if slots else 0) + 1
-    print(f"#{num} skeptic rounds: NEEDS_REWORK={nr} PASS={counts['PASS']} "
-          f"FAIL={counts['FAIL']} — next review = r{nxt} (cap {cap})")
-    if nr >= cap:
+    capped = nr >= cap
+    state = None
+    if capped:
+        try:
+            state = issue_state(repo, num)
+        except SystemExit:
+            state = "OPEN"  # conservative: treat unreachable as open
+    head = (f"#{num} skeptic rounds: NEEDS_REWORK={nr} PASS={counts['PASS']} "
+            f"FAIL={counts['FAIL']} — next review = r{nxt} (cap {cap})")
+    if capped and state == "CLOSED":
+        head += " — cap reached, issue closed (informational)"
+    print(head)
+    if capped and state != "CLOSED":
         msg = (f"skeptic round cap reached ({nr} NEEDS REWORK >= {cap}) — "
                f"escalate to human; do NOT launch another rework cycle")
         if escalate:
@@ -292,9 +386,12 @@ def cmd_rounds(owner, repo, proj_num, proj_id, num, cap, escalate):
                 print(f"#{num} -> Blocked")
             except SystemExit:
                 print("warn: could not set Blocked (issue not on board?)")
-            gh("issue", "comment", str(num), "--repo", repo,
-               "--body", f"**Round cap:** {msg}")
-            print(f"#{num} escalation comment posted")
+            try:
+                gh("issue", "comment", str(num), "--repo", repo,
+                   "--body", f"**Round cap:** {msg}")
+                print(f"#{num} escalation comment posted")
+            except SystemExit:
+                print("warn: escalation comment failed")
         print(msg)
         sys.exit(2)
 
@@ -318,11 +415,14 @@ def main():
 
     c = sub.add_parser("create"); c.add_argument("title")
     c.add_argument("--body"); c.add_argument("--body-file")
-    c.add_argument("--status", default="Todo"); c.add_argument("--epic", type=int)
+    c.add_argument("--status"); c.add_argument("--epic", type=int)
 
     b = sub.add_parser("board"); b.add_argument("--status")
 
-    s = sub.add_parser("status"); s.add_argument("num", type=int); s.add_argument("name")
+    s = sub.add_parser("status"); s.add_argument("num", type=int)
+    s.add_argument("name", nargs="?")
+    s.add_argument("--set", "-s", dest="set_name",
+                   help="alias for positional NAME (agents keep trying it)")
 
     for name, st in (("start", "In Progress"), ("review", "Review"),
                      ("block", "Blocked")):
@@ -354,7 +454,11 @@ def main():
     elif a.cmd == "board":
         cmd_board(owner, proj_num, a.status)
     elif a.cmd == "status":
-        set_status(owner, proj_num, pid, a.num, a.name)
+        name = a.name or a.set_name
+        if name is None:
+            show_status(owner, proj_num, a.num)
+        else:
+            set_status(owner, proj_num, pid, a.num, name)
     elif a.cmd in ("start", "review", "block"):
         set_status(owner, proj_num, pid, a.num, a._st)
     elif a.cmd == "done":

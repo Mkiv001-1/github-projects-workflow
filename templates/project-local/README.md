@@ -13,12 +13,12 @@
 ```markdown
 ---
 name: github-projects-workflow
-description: Project-local GitHub Projects adapter for <REPO>. Canon: D:\Git\github-projects-workflow
+description: Project-local GitHub Projects adapter for <REPO>. Canon: C:/git/github-projects-workflow
 ---
 
 # <REPO> — GitHub Projects
 
-**Canon:** `D:\Git\github-projects-workflow\skills\github-projects-workflow\SKILL.md`
+**Canon:** `C:/git/github-projects-workflow\skills\github-projects-workflow\SKILL.md`
 Read canon first; below is identity + policy only.
 
 ## Identity

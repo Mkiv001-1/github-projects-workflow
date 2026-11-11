@@ -1,0 +1,25 @@
+{
+  "_comment": "Copy to <repo>/.devin/hooks.v1.json. Replace __GATE_DIR__ with the absolute path containing f008_gate.py / ps1_gate.py — either this canon's scripts/ dir or the repo's own vendored .devin/scripts/. The command runs in the session's default shell (Git Bash on Windows workstations): plain `python` resolves to Windows python. On repos whose canonical clone lives inside WSL, call wsl python3 with a WSL-side path instead (see shared_trading_system/.devin/hooks.v1.json).",
+  "PreToolUse": [
+    {
+      "matcher": "^exec$",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python __GATE_DIR__/f008_gate.py",
+          "timeout": 10
+        }
+      ]
+    },
+    {
+      "matcher": "^(write|edit)$",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python __GATE_DIR__/ps1_gate.py",
+          "timeout": 10
+        }
+      ]
+    }
+  ]
+}
