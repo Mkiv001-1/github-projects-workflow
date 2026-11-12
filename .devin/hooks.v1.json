@@ -1,0 +1,14 @@
+{
+  "PreToolUse": [
+    {
+      "matcher": "^(write|edit|read)$",
+      "hooks": [
+        {
+          "type": "command",
+          "command": "python C:/git/github-projects-workflow/.devin/scripts/rsi_safe_gate.py",
+          "timeout": 10
+        }
+      ]
+    }
+  ]
+}
