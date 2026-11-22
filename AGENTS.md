@@ -24,7 +24,11 @@ EVERY non-trivial session MUST track work via GitHub Projects.
 
 ## Exemptions
 
-Trivial Q&A (1–3 sentences, no code/config changes).
+- Trivial Q&A (1–3 sentences, no code/config changes).
+- Repo-level opt-out: repos whose own AGENTS.md/rules declare exemption
+  from GitHub Projects tracking (e.g. «Без GitHub Projects» /
+  "exempt from GitHub Projects tracking") — no Issue or board item
+  required; the declaration is the marker.
 
 ## Skills
 

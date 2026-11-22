@@ -194,4 +194,8 @@ Option IDs — только из project-local ids file.
 
 ## Exemption
 
-Trivial Q&A (1–3 sentences, no code/config changes) — без Issue.
+- Trivial Q&A (1–3 sentences, no code/config changes) — без Issue.
+- Repo-level opt-out: репозиторий, чей `AGENTS.md` (или другой rules-файл)
+  объявляет освобождение от трекинга GitHub Projects — например строка
+  «Без GitHub Projects» / "exempt from GitHub Projects tracking" — не
+  требует Issue и board item; сама декларация и есть маркер.

@@ -1,5 +1,5 @@
 ---
-description: Hard gate — no implementation without GitHub Issue + project board item. Canonical for all D:\Git projects.
+description: Hard gate — no implementation without GitHub Issue + project board item. Canonical for all C:\git projects.
 globs: ["*"]
 ---
 
@@ -26,4 +26,10 @@ plus project-local IDs under the repo's `.devin/skills/`.
 
 ## Exemption
 
-Trivial questions (1–3 sentence answers, no code changes) are exempt.
+- Trivial questions (1–3 sentence answers, no code changes) are exempt.
+- Repo-level opt-out: a repo whose `AGENTS.md` (or another rules file)
+  declares exemption from GitHub Projects tracking — e.g. a line like
+  «Без GitHub Projects», "no GitHub Projects", or
+  "exempt from GitHub Projects tracking" — needs no Issue or board item.
+  The declaration itself is the marker; honor it instead of creating
+  tracking.
