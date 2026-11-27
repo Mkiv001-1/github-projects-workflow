@@ -507,13 +507,16 @@ def cmd_janitor(owner, repo, proj_num, proj_id, fix, stale_days):
             print(f"  #{n:<4} {st:<12} {age:>3}d {title[:60]}")
 
     if fix and f["closed_not_done"]:
-        print(f"\n--fix: setting {len(f['closed_not_done'])} closed items -> Done")
+        print(f"\n--fix: setting {len(f['closed_not_done'])} closed items -> Done"
+              " (throttled 2s/mutation vs GraphQL secondary rate limit)")
         for n, _, _ in f["closed_not_done"]:
             try:
                 set_status(owner, proj_num, proj_id, n, "Done")
+                print(f"  #{n} -> Done")
             except SystemExit:
                 print(f"  warn: could not set #{n} (not on board?)"
                       f"", file=sys.stderr)
+            time.sleep(2)
     total = sum(len(v) for v in f.values())
     print(f"\njanitor: {total} finding(s)"
           + (" — fixable with --fix: closed_not_done"
