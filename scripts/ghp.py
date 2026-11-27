@@ -27,6 +27,9 @@ Subcommands:
   rounds NUM [--cap N] [--escalate]
                                   count Skeptic Review verdicts on NUM;
                                   exit 2 when NEEDS REWORK >= cap (def 6)
+  janitor [--fix] [--stale-days N]
+                                  board hygiene: closed!=Done, open without
+                                  status, duplicate open titles, stale active
   fields                          dump project fields + option ids
 """
 
@@ -86,10 +89,19 @@ def project_id(owner, num):
     return json.loads(r.stdout)["id"]
 
 
+ITEM_LIST_LIMIT = 1000
+
+
 def project_items(owner, num):
+    # gh paginates internally up to --limit; 200 silently truncated boards
+    # once a project grew past 200 items (audit 2026-11-27: #11 had 271).
     r = gh("project", "item-list", str(num), "--owner", owner,
-           "--format", "json", "--limit", "200")
-    return json.loads(r.stdout)["items"]
+           "--format", "json", "--limit", str(ITEM_LIST_LIMIT))
+    items = json.loads(r.stdout)["items"]
+    if len(items) >= ITEM_LIST_LIMIT:
+        print(f"ghp: warning: item-list hit --limit {ITEM_LIST_LIMIT} — "
+              f"board output may be truncated", file=sys.stderr)
+    return items
 
 
 def find_item(owner, num, issue_num, retries=10):
@@ -396,6 +408,118 @@ def cmd_rounds(owner, repo, proj_num, proj_id, num, cap, escalate):
         sys.exit(2)
 
 
+# ---------------------------------------------------------------------------
+# janitor — deterministic board hygiene audit (no LLM)
+
+JANITOR_ACTIVE = {"in progress", "in review", "review", "blocked"}
+
+
+def _norm_title(t):
+    return " ".join(re.sub(r"[^0-9a-zа-я]+", " ", (t or "").lower()).split())
+
+
+def _parse_iso(ts):
+    """GitHub ISO timestamp ('2026-11-17T10:00:00Z') -> epoch seconds | None.
+
+    None on missing/unparseable input — callers must skip rather than
+    treat age as infinite."""
+    if not ts:
+        return None
+    try:
+        from datetime import datetime, timezone
+        return datetime.fromisoformat(
+            ts.replace("Z", "+00:00")).timestamp()
+    except (ValueError, TypeError):
+        return None
+
+
+def analyze_board(items, issues, now_ts, stale_days=14):
+    """Pure board-hygiene analysis — unit-tested without gh.
+
+    items: project item dicts [{content:{number,title}, status}]
+    issues: {number: {state, updatedAt, title}} for the repo's issues
+    -> {"closed_not_done": [(num, status, title)],
+        "open_no_status": [(num, title)],
+        "dup_open_titles": [(norm_title, [nums])],
+        "stale_active": [(num, status, age_days, title)]}
+    """
+    findings = {"closed_not_done": [], "open_no_status": [],
+                "dup_open_titles": [], "stale_active": []}
+    by_num = {}
+    for it in items:
+        c = it.get("content") or {}
+        n = c.get("number")
+        if n:
+            by_num[n] = {"status": (it.get("status") or "").strip(),
+                         "title": c.get("title", "")}
+    open_titles = {}
+    for n, meta in sorted(by_num.items()):
+        iss = issues.get(n)
+        if not iss:
+            continue  # cross-repo item or unresolved content — not ours
+        state = (iss.get("state") or "").upper()
+        st = meta["status"]
+        if state == "CLOSED":
+            if st.lower() != "done":
+                findings["closed_not_done"].append((n, st or "-", meta["title"]))
+        elif state == "OPEN":
+            if not st:
+                findings["open_no_status"].append((n, meta["title"]))
+            elif st.lower() in JANITOR_ACTIVE:
+                updated = _parse_iso(iss.get("updatedAt"))
+                if updated is not None:
+                    age = (now_ts - updated) / 86400
+                    if age >= stale_days:
+                        findings["stale_active"].append(
+                            (n, st, int(age), meta["title"]))
+            open_titles.setdefault(
+                _norm_title(iss.get("title") or meta["title"]), []).append(n)
+    for norm, nums in sorted(open_titles.items()):
+        if norm and len(nums) > 1:
+            findings["dup_open_titles"].append((norm, sorted(nums)))
+    return findings
+
+
+def cmd_janitor(owner, repo, proj_num, proj_id, fix, stale_days):
+    items = project_items(owner, proj_num)
+    r = gh("issue", "list", "--repo", repo, "--state", "all",
+           "--limit", "500", "--json", "number,title,state,updatedAt")
+    issues = {x["number"]: x for x in json.loads(r.stdout)}
+    f = analyze_board(items, issues, time.time(), stale_days)
+
+    print(f"janitor: {len(items)} board items, {len(issues)} issues")
+    if f["closed_not_done"]:
+        print(f"\nCLOSED but board status != Done ({len(f['closed_not_done'])}):")
+        for n, st, title in f["closed_not_done"]:
+            print(f"  #{n:<4} {st:<12} {title[:70]}")
+    if f["open_no_status"]:
+        print(f"\nOPEN without board status ({len(f['open_no_status'])}):")
+        for n, title in f["open_no_status"]:
+            print(f"  #{n:<4} {title[:70]}")
+    if f["dup_open_titles"]:
+        print(f"\nDuplicate OPEN titles ({len(f['dup_open_titles'])}):")
+        for norm, nums in f["dup_open_titles"]:
+            print(f"  {nums} {norm[:70]}")
+    if f["stale_active"]:
+        print(f"\nStale active items (>{stale_days}d without update, "
+              f"{len(f['stale_active'])}):")
+        for n, st, age, title in f["stale_active"]:
+            print(f"  #{n:<4} {st:<12} {age:>3}d {title[:60]}")
+
+    if fix and f["closed_not_done"]:
+        print(f"\n--fix: setting {len(f['closed_not_done'])} closed items -> Done")
+        for n, _, _ in f["closed_not_done"]:
+            try:
+                set_status(owner, proj_num, proj_id, n, "Done")
+            except SystemExit:
+                print(f"  warn: could not set #{n} (not on board?)"
+                      f"", file=sys.stderr)
+    total = sum(len(v) for v in f.values())
+    print(f"\njanitor: {total} finding(s)"
+          + (" — fixable with --fix: closed_not_done"
+             if f["closed_not_done"] and not fix else ""))
+
+
 def cmd_fields(owner, proj_id):
     q = """query($id:ID!){node(id:$id){... on ProjectV2{
       fields(first:30){nodes{... on ProjectV2SingleSelectField{
@@ -443,6 +567,11 @@ def main():
     o = sub.add_parser("doc"); o.add_argument("num", type=int); o.add_argument("path")
     o.add_argument("--text")
 
+    jn = sub.add_parser("janitor")
+    jn.add_argument("--fix", action="store_true",
+                    help="set board status Done on closed issues")
+    jn.add_argument("--stale-days", type=int, default=14)
+
     sub.add_parser("fields")
 
     a = p.parse_args()
@@ -474,6 +603,8 @@ def main():
         cmd_doc(owner, repo, a.num, a.path, a.text)
     elif a.cmd == "rounds":
         cmd_rounds(owner, repo, proj_num, pid, a.num, a.cap, a.escalate)
+    elif a.cmd == "janitor":
+        cmd_janitor(owner, repo, proj_num, pid, a.fix, a.stale_days)
     elif a.cmd == "fields":
         cmd_fields(owner, pid)
 
