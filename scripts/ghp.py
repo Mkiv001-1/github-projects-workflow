@@ -507,16 +507,34 @@ def cmd_janitor(owner, repo, proj_num, proj_id, fix, stale_days):
             print(f"  #{n:<4} {st:<12} {age:>3}d {title[:60]}")
 
     if fix and f["closed_not_done"]:
-        print(f"\n--fix: setting {len(f['closed_not_done'])} closed items -> Done"
-              " (throttled 2s/mutation vs GraphQL secondary rate limit)")
+        print(f"\n--fix: setting {len(f['closed_not_done'])} closed items -> Done")
+        # Reuse the already-fetched board snapshot: one mutation per item,
+        # no per-item board re-fetch (a 272-item list costs ~100x a mutation
+        # and exhausts the hourly GraphQL budget mid-run).
+        opts, field_id = status_options(owner, proj_id)
+        done_id = resolve_status(opts, "Done")
+        if not done_id:
+            die("no 'Done' status option on project")
+        id_by_num = {(it.get("content") or {}).get("number"): it.get("id")
+                     for it in items}
+        ok = fail = 0
         for n, _, _ in f["closed_not_done"]:
+            item_id = id_by_num.get(n)
+            if not item_id:
+                print(f"  warn: #{n} not on board, skipped", file=sys.stderr)
+                fail += 1
+                continue
             try:
-                set_status(owner, proj_num, proj_id, n, "Done")
+                gh("project", "item-edit", "--project-id", proj_id,
+                   "--id", item_id, "--field-id", field_id,
+                   "--single-select-option-id", done_id)
                 print(f"  #{n} -> Done")
+                ok += 1
             except SystemExit:
-                print(f"  warn: could not set #{n} (not on board?)"
-                      f"", file=sys.stderr)
-            time.sleep(2)
+                print(f"  warn: could not set #{n}", file=sys.stderr)
+                fail += 1
+            time.sleep(1)
+        print(f"--fix: {ok} updated, {fail} failed/skipped")
     total = sum(len(v) for v in f.values())
     print(f"\njanitor: {total} finding(s)"
           + (" — fixable with --fix: closed_not_done"
